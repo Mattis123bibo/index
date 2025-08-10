@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<title>Mattis Generator</title>
+<style>
+  body { font-family: Arial, sans-serif; background: #0b1e2d; color: #f0f4f8; text-align: center; margin: 0; padding: 0; }
+  h1 { margin: 20px 0; font-size: 32px; color: #1fa2ff; }
+  .cards { display: flex; justify-content: center; gap: 14px; margin: 15px 0; }
+  .card {
+    width: 90px; height: 130px; background: white; color: black;
+    border-radius: 10px; box-shadow: 0 5px 14px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 10px; font-weight: bold; font-size: 24px;
+  }
+  .suit { font-size: 30px; }
+  .heart, .diamond { color: red; }
+  .club, .spade { color: black; }
+  #resultList {
+    margin: 15px auto 25px;
+    width: 340px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: #142f47;
+    border-radius: 10px;
+    padding: 10px;
+    text-align: left;
+    font-size: 18px;
+    box-shadow: inset 0 0 15px #0a1b2e;
+  }
+  #resultList div {
+    padding: 6px 12px;
+    border-bottom: 1px solid #255a8a;
+  }
+  #resultList div.drilling {
+    background-color: #ff9f1c;
+    color: #0b1e2d;
+    font-weight: bold;
+  }
+  .controls { margin: 20px 0; font-size: 20px; }
+  select { font-size: 18px; margin: 0 6px; }
+  input[type=range] { width: 230px; vertical-align: middle; }
+  button {
+    padding: 10px 18px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer;
+    margin: 6px;
+    font-size: 18px;
+  }
+  .start { background: #1fa2ff; color: #fff; }
+  .stop { background: #555; color: #fff; }
+  #holeArea { margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<h1>Mattis Generator</h1>
+
+<div class="controls">
+  Hole Card 1: 
+  <select id="holeRank1"></select>
+  <select id="holeSuit1"></select>
+  &nbsp;&nbsp;
+  Hole Card 2:
+  <select id="holeRank2"></select>
+  <select id="holeSuit2"></select>
+  <br><br>
+  <label for="interval">Intervall (Sek.):</label>
+  <input id="interval" type="range" min="1" max="5" step="0.5" value="2" />
+  <span id="intervalValue">2.0s</span>
+  <br><br>
+  <button id="startBtn" class="start">Start</button>
+  <button id="stopBtn" class="stop" disabled>Stop</button>
+</div>
+
+<!-- Hole Cards jetzt mittig über dem Flop -->
+<div id="holeArea" class="cards"></div>
+
+<div>
+  <div style="font-size:18px;color:#ccc;margin-top:14px;">Flop</div>
+  <div class="cards" id="flopArea"></div>
+</div>
+
+<div id="resultList"></div>
+
+<script>
+const RANKS = [2,3,4,5,6,7,8,9,10,11,12,13,14];
+const RANK_TO_STR = {11:'J',12:'Q',13:'K',14:'A'};
+const SUITS = ['♣','♦','♥','♠'];
+
+function rankStr(r){ return RANK_TO_STR[r] || r; }
+function cardEl(card){
+  const el = document.createElement('div');
+  el.className = 'card';
+  const suitClass = (card.s==='♥')?'heart':(card.s==='♦')?'diamond':(card.s==='♣')?'club':'spade';
+  el.innerHTML = `<div>${rankStr(card.r)}</div>
+                  <div class="suit ${suitClass}">${card.s}</div>
+                  <div style="text-align:right">${card.s}</div>`;
+  return el;
+}
+
+function buildDeck(){
+  const deck = [];
+  for(const r of RANKS){
+    for(const s of SUITS){
+      deck.push({r,s});
+    }
+  }
+  return deck;
+}
+
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+}
+
+function isStraight(ranks){
+  const uniq = [...new Set(ranks)].sort((a,b)=>a-b);
+  for(let i=0;i<=uniq.length-5;i++){
+    if(uniq[i]+4===uniq[i+4] && uniq[i+1]===uniq[i]+1 && uniq[i+2]===uniq[i]+2 && uniq[i+3]===uniq[i]+3)
+      return [true, uniq[i+4]];
+  }
+  if(uniq.includes(14)){
+    const low = uniq.map(r=>r===14?1:r).sort((a,b)=>a-b);
+    for(let i=0;i<=low.length-5;i++){
+      if(low[i]+4===low[i+4] && low[i+1]===low[i]+1 && low[i+2]===low[i]+2 && low[i+3]===low[i]+3)
+        return [true,5];
+    }
+  }
+  return [false,null];
+}
+
+function classify(allCards){
+  const ranks = allCards.map(c=>c.r);
+  const suits = allCards.map(c=>c.s);
+  const counts = {};
+  ranks.forEach(r=>counts[r]=(counts[r]||0)+1);
+  const maxCount = Math.max(...Object.values(counts));
+  const pairCount = Object.values(counts).filter(v=>v===2).length;
+  const flushSuit = SUITS.find(s=>suits.filter(x=>x===s).length>=5);
+  const [straight, sh] = isStraight(ranks);
+  if(flushSuit){
+    const suitedRanks = allCards.filter(c=>c.s===flushSuit).map(c=>c.r);
+    const [sf, sfh] = isStraight(suitedRanks);
+    if(sf && suitedRanks.length>=5){
+      if(sfh===14) return "Royal Flush";
+      return `Straight Flush (High ${rankStr(sfh)})`;
+    }
+  }
+  if(maxCount===4) return `Vierling (${rankStr(+Object.keys(counts).find(k=>counts[k]===4))})`;
+  if(maxCount===3 && pairCount>=1){
+    const trips = rankStr(+Object.keys(counts).find(k=>counts[k]===3));
+    const pair = rankStr(+Object.keys(counts).find(k=>counts[k]===2));
+    return `Full House (${trips} über ${pair})`;
+  }
+  if(flushSuit) return `Flush (${flushSuit})`;
+  if(straight) return `Straight (High ${rankStr(sh)})`;
+  if(maxCount===3) return `Drilling (${rankStr(+Object.keys(counts).find(k=>counts[k]===3))})`;
+  if(pairCount>=2){
+    const pairs = Object.keys(counts).filter(k=>counts[k]===2).map(Number).sort((a,b)=>b-a);
+    return `Zwei Paare (${rankStr(pairs[0])} & ${rankStr(pairs[1])})`;
+  }
+  if(pairCount===1) return `Paar (${rankStr(+Object.keys(counts).find(k=>counts[k]===2))})`;
+  return `High Card (${rankStr(Math.max(...ranks))})`;
+}
+
+const holeRank1 = document.getElementById('holeRank1');
+const holeRank2 = document.getElementById('holeRank2');
+const holeSuit1 = document.getElementById('holeSuit1');
+const holeSuit2 = document.getElementById('holeSuit2');
+const holeArea = document.getElementById('holeArea');
+const flopArea = document.getElementById('flopArea');
+const resultList = document.getElementById('resultList');
+const intervalEl = document.getElementById('interval');
+const intervalVal = document.getElementById('intervalValue');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+
+let timer = null;
+let history = [];
+
+function createOption(value, text) {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = text;
+  return opt;
+}
+
+function setupSelectors(){
+  const rankNames = [2,3,4,5,6,7,8,9,10,'J','Q','K','A'];
+  for(let i=0; i<RANKS.length; i++){
+    holeRank1.appendChild(createOption(RANKS[i], rankNames[i]));
+    holeRank2.appendChild(createOption(RANKS[i], rankNames[i]));
+  }
+  SUITS.forEach(s=>{
+    holeSuit1.appendChild(createOption(s,s));
+    holeSuit2.appendChild(createOption(s,s));
+  });
+  holeRank1.value = 2;
+  holeSuit1.value = '♣';
+  holeRank2.value = 3;
+  holeSuit2.value = '♣';
+}
+setupSelectors();
+
+intervalEl.addEventListener('input', () => {
+  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
+  if(timer){
+    clearInterval(timer);
+    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+  }
+});
+
+// Verhindert doppelte Hole Cards:
+function checkHoleCards() {
+  const h1r = holeRank1.value;
+  const h1s = holeSuit1.value;
+  const h2r = holeRank2.value;
+  const h2s = holeSuit2.value;
+
+  if(h1r === h2r && h1s === h2s){
+    outer: for(let r of RANKS){
+      for(let s of SUITS){
+        if(r != h1r || s != h1s){
+          holeRank2.value = r;
+          holeSuit2.value = s;
+          break outer;
+        }
+      }
+    }
+  }
+}
+
+// Hole Cards sofort anzeigen
+function renderHoleCards(){
+  holeArea.innerHTML = '';
+  const h1 = {r: parseInt(holeRank1.value), s: holeSuit1.value};
+  const h2 = {r: parseInt(holeRank2.value), s: holeSuit2.value};
+  holeArea.appendChild(cardEl(h1));
+  holeArea.appendChild(cardEl(h2));
+}
+
+holeRank1.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeSuit1.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeRank2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeSuit2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+
+function renderHistory(){
+  resultList.innerHTML = '';
+  const maxEntries = 150;
+  const startIndex = history.length > maxEntries ? history.length - maxEntries : 0;
+  for(let i=startIndex; i<history.length; i++){
+    const div = document.createElement('div');
+    const num = i - startIndex + 1;
+    div.textContent = `${num}. ${history[i]}`;
+    if(history[i].toLowerCase().includes('drilling')) {
+      div.classList.add('drilling');
+    }
+    resultList.appendChild(div);
+  }
+  resultList.scrollTop = resultList.scrollHeight;
+}
+
+function drawOnce(){
+  flopArea.innerHTML = '';
+
+  const hole1 = {r:parseInt(holeRank1.value), s: holeSuit1.value};
+  const hole2 = {r:parseInt(holeRank2.value), s: holeSuit2.value};
+
+  let deck = buildDeck();
+
+  deck = deck.filter(c => !(c.r === hole1.r && c.s === hole1.s) && !(c.r === hole2.r && c.s === hole2.s));
+
+  shuffle(deck);
+
+  const flop = deck.splice(0,3);
+
+  flop.forEach(c => flopArea.appendChild(cardEl(c)));
+
+  const allCards = [hole1, hole2, ...flop];
+  const res = classify(allCards);
+  history.push(res);
+
+  if(history.length > 150){
+    history.shift();
+  }
+
+  renderHistory();
+  renderHoleCards(); // Hole Cards aktuell halten
+}
+
+startBtn.onclick = () => {
+  checkHoleCards();
+  drawOnce();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+};
+
+stopBtn.onclick = () => {
+  if(timer) clearInterval(timer);
+  timer = null;
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+};
+
+// Initial anzeigen:
+renderHoleCards();
+drawOnce();
+
+</script>
+
+</body>
+</html>
