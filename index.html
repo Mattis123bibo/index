@@ -17,7 +17,7 @@
   .heart, .diamond { color: red; }
   .club, .spade { color: black; }
   #resultList {
-    margin: 15px auto 5px;
+    margin: 15px auto 25px;
     width: 340px;
     max-height: 260px;
     overflow-y: auto;
@@ -37,13 +37,6 @@
     color: #0b1e2d;
     font-weight: bold;
   }
-  #drillingCount {
-    font-size: 20px;
-    color: #ff9f1c;
-    margin: 10px auto 20px;
-    width: 340px;
-    text-align: left;
-  }
   .controls { margin: 20px 0; font-size: 20px; }
   select { font-size: 18px; margin: 0 6px; }
   input[type=range] { width: 230px; vertical-align: middle; }
@@ -56,6 +49,14 @@
   .stop { background: #555; color: #fff; }
   .restart { background: #28a745; color: #fff; }
   #holeArea { margin: 20px 0; }
+  #drillingCounter {
+    font-size: 20px;
+    margin: 10px auto 30px;
+    width: 340px;
+    color: #ff9f1c;
+    font-weight: bold;
+    text-align: right;
+  }
 </style>
 </head>
 <body>
@@ -89,7 +90,8 @@
 </div>
 
 <div id="resultList"></div>
-<div id="drillingCount">Drilling: <span id="drillingNumber">0</span></div>
+
+<div id="drillingCounter">Drilling: 0</div>
 
 <script>
 const RANKS = [2,3,4,5,6,7,8,9,10,11,12,13,14];
@@ -186,12 +188,12 @@ const intervalVal = document.getElementById('intervalValue');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const restartBtn = document.getElementById('restartBtn');
-const drillingNumberEl = document.getElementById('drillingNumber');
+const drillingCounter = document.getElementById('drillingCounter');
 
 let timer = null;
 let history = [];
-let count = 0;
 let drillingCount = 0;
+let drawCount = 0;
 
 function createOption(value, text) {
   const opt = document.createElement('option');
@@ -202,6 +204,11 @@ function createOption(value, text) {
 
 function setupSelectors(){
   const rankNames = [2,3,4,5,6,7,8,9,10,'J','Q','K','A'];
+  // Clear existing options if any (for restart)
+  holeRank1.innerHTML = '';
+  holeRank2.innerHTML = '';
+  holeSuit1.innerHTML = '';
+  holeSuit2.innerHTML = '';
   for(let i=0; i<RANKS.length; i++){
     holeRank1.appendChild(createOption(RANKS[i], rankNames[i]));
     holeRank2.appendChild(createOption(RANKS[i], rankNames[i]));
@@ -217,31 +224,26 @@ function setupSelectors(){
 }
 setupSelectors();
 
-intervalEl.addEventListener('input', () => {
-  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
-  if(timer){
-    clearInterval(timer);
-    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-  }
-});
-
-// Verhindert doppelte Hole Cards:
-function checkHoleCards() {
+// Verhindert, dass gleiche Karte zweimal ausgewählt wird
+function preventDuplicateHoleCards() {
   const h1r = holeRank1.value;
   const h1s = holeSuit1.value;
-  const h2r = holeRank2.value;
-  const h2s = holeSuit2.value;
+  let h2r = holeRank2.value;
+  let h2s = holeSuit2.value;
 
   if(h1r === h2r && h1s === h2s){
+    // Suche nächstmögliche gültige Karte für zweite Hole Card
     outer: for(let r of RANKS){
       for(let s of SUITS){
         if(r != h1r || s != h1s){
-          holeRank2.value = r;
-          holeSuit2.value = s;
+          h2r = r;
+          h2s = s;
           break outer;
         }
       }
     }
+    holeRank2.value = h2r;
+    holeSuit2.value = h2s;
   }
 }
 
@@ -254,11 +256,32 @@ function renderHoleCards(){
   holeArea.appendChild(cardEl(h2));
 }
 
+// Event Listener für Auswahlfelder, immer verhindern, dass doppelte Karten entstehen
+function onHoleChange() {
+  preventDuplicateHoleCards();
+  renderHoleCards();
+}
+
+holeRank1.addEventListener('change', onHoleChange);
+holeSuit1.addEventListener('change', onHoleChange);
+holeRank2.addEventListener('change', onHoleChange);
+holeSuit2.addEventListener('change', onHoleChange);
+
+intervalEl.addEventListener('input', () => {
+  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
+  if(timer){
+    clearInterval(timer);
+    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+  }
+});
+
 function renderHistory(){
   resultList.innerHTML = '';
-  for(let i=0; i<history.length; i++){
+  const maxEntries = 1000;
+  const startIndex = history.length > maxEntries ? history.length - maxEntries : 0;
+  for(let i=startIndex; i<history.length; i++){
     const div = document.createElement('div');
-    const num = i + 1;
+    const num = i - startIndex + 1;
     div.textContent = `${num}. ${history[i]}`;
     if(history[i].toLowerCase().includes('drilling')) {
       div.classList.add('drilling');
@@ -266,16 +289,11 @@ function renderHistory(){
     resultList.appendChild(div);
   }
   resultList.scrollTop = resultList.scrollHeight;
-
-  drillingNumberEl.textContent = drillingCount;
 }
 
 function drawOnce(){
-  if(count >= 1000){
-    clearInterval(timer);
-    timer = null;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+  if(drawCount >= 1000){
+    stopInterval();
     return;
   }
 
@@ -298,61 +316,62 @@ function drawOnce(){
   const res = classify(allCards);
   history.push(res);
 
+  if(history.length > 1000){
+    history.shift();
+  }
+
   // Drillinge zählen
   if(res.toLowerCase().includes('drilling')){
     drillingCount++;
+    drillingCounter.textContent = `Drilling: ${drillingCount}`;
   }
 
-  if(history.length > 1000){
-    // Falls ältester Eintrag ein Drilling war, entsprechend runterzählen
-    const removed = history.shift();
-    if(removed.toLowerCase().includes('drilling')){
-      drillingCount--;
-    }
-  }
+  drawCount++;
 
   renderHistory();
-  renderHoleCards();
-
-  count++;
+  renderHoleCards(); // Hole Cards aktuell halten
 }
 
-startBtn.onclick = () => {
-  checkHoleCards();
+function startInterval(){
   if(timer) clearInterval(timer);
-  count = 0;
-  drillingCount = 0;
-  history = [];
+  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+}
+
+function stopInterval(){
+  if(timer) clearInterval(timer);
+  timer = null;
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+}
+
+// Button Funktionen
+startBtn.onclick = () => {
+  preventDuplicateHoleCards();
   drawOnce();
   startBtn.disabled = true;
   stopBtn.disabled = false;
-  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+  startInterval();
 };
 
 stopBtn.onclick = () => {
-  if(timer) clearInterval(timer);
-  timer = null;
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
+  stopInterval();
 };
 
 restartBtn.onclick = () => {
-  if(timer) clearInterval(timer);
-  timer = null;
-  count = 0;
-  drillingCount = 0;
+  stopInterval();
   history = [];
-  renderHistory();
+  drillingCount = 0;
+  drawCount = 0;
+  drillingCounter.textContent = `Drilling: 0`;
+  resultList.innerHTML = '';
+  setupSelectors();
+  preventDuplicateHoleCards();
   renderHoleCards();
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  // Automatisch starten nach Neustart:
-  startBtn.click();
 };
 
-// Initial anzeigen:
 renderHoleCards();
 drawOnce();
+
 </script>
 
 </body>
