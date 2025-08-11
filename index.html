@@ -42,7 +42,7 @@
   input[type=range] { width: 230px; vertical-align: middle; }
   button {
     padding: 10px 18px; font-weight: bold; border: none; border-radius: 6px; cursor: pointer;
-    margin: 6px;
+    margin: 6px 6px 6px 0;
     font-size: 18px;
   }
   .start { background: #1fa2ff; color: #fff; }
@@ -51,11 +51,8 @@
   #holeArea { margin: 20px 0; }
   #drillingCounter {
     font-size: 20px;
-    margin: 10px auto 30px;
-    width: 340px;
-    color: #ff9f1c;
-    font-weight: bold;
-    text-align: right;
+    color: #f0f4f8;
+    margin-bottom: 20px;
   }
 </style>
 </head>
@@ -84,14 +81,14 @@
 <!-- Hole Cards jetzt mittig über dem Flop -->
 <div id="holeArea" class="cards"></div>
 
+<div id="drillingCounter">Drilling: 0</div>
+
 <div>
   <div style="font-size:18px;color:#ccc;margin-top:14px;">Flop</div>
   <div class="cards" id="flopArea"></div>
 </div>
 
 <div id="resultList"></div>
-
-<div id="drillingCounter">Drilling: 0</div>
 
 <script>
 const RANKS = [2,3,4,5,6,7,8,9,10,11,12,13,14];
@@ -193,7 +190,7 @@ const drillingCounter = document.getElementById('drillingCounter');
 let timer = null;
 let history = [];
 let drillingCount = 0;
-let drawCount = 0;
+let counter = 0;
 
 function createOption(value, text) {
   const opt = document.createElement('option');
@@ -204,11 +201,6 @@ function createOption(value, text) {
 
 function setupSelectors(){
   const rankNames = [2,3,4,5,6,7,8,9,10,'J','Q','K','A'];
-  // Clear existing options if any (for restart)
-  holeRank1.innerHTML = '';
-  holeRank2.innerHTML = '';
-  holeSuit1.innerHTML = '';
-  holeSuit2.innerHTML = '';
   for(let i=0; i<RANKS.length; i++){
     holeRank1.appendChild(createOption(RANKS[i], rankNames[i]));
     holeRank2.appendChild(createOption(RANKS[i], rankNames[i]));
@@ -217,33 +209,39 @@ function setupSelectors(){
     holeSuit1.appendChild(createOption(s,s));
     holeSuit2.appendChild(createOption(s,s));
   });
-  holeRank1.value = 2;
-  holeSuit1.value = '♣';
-  holeRank2.value = 3;
-  holeSuit2.value = '♣';
+  // Neue Startwerte:
+  holeRank1.value = 10;
+  holeSuit1.value = '♥';
+  holeRank2.value = 11;  // J = 11
+  holeSuit2.value = '♠';
 }
 setupSelectors();
 
-// Verhindert, dass gleiche Karte zweimal ausgewählt wird
-function preventDuplicateHoleCards() {
+intervalEl.addEventListener('input', () => {
+  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
+  if(timer){
+    clearInterval(timer);
+    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+  }
+});
+
+// Verhindert doppelte Hole Cards:
+function checkHoleCards() {
   const h1r = holeRank1.value;
   const h1s = holeSuit1.value;
-  let h2r = holeRank2.value;
-  let h2s = holeSuit2.value;
+  const h2r = holeRank2.value;
+  const h2s = holeSuit2.value;
 
   if(h1r === h2r && h1s === h2s){
-    // Suche nächstmögliche gültige Karte für zweite Hole Card
     outer: for(let r of RANKS){
       for(let s of SUITS){
         if(r != h1r || s != h1s){
-          h2r = r;
-          h2s = s;
+          holeRank2.value = r;
+          holeSuit2.value = s;
           break outer;
         }
       }
     }
-    holeRank2.value = h2r;
-    holeSuit2.value = h2s;
   }
 }
 
@@ -256,23 +254,21 @@ function renderHoleCards(){
   holeArea.appendChild(cardEl(h2));
 }
 
-// Event Listener für Auswahlfelder, immer verhindern, dass doppelte Karten entstehen
-function onHoleChange() {
-  preventDuplicateHoleCards();
+holeRank1.addEventListener('change', () => {
+  checkHoleCards();
   renderHoleCards();
-}
-
-holeRank1.addEventListener('change', onHoleChange);
-holeSuit1.addEventListener('change', onHoleChange);
-holeRank2.addEventListener('change', onHoleChange);
-holeSuit2.addEventListener('change', onHoleChange);
-
-intervalEl.addEventListener('input', () => {
-  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
-  if(timer){
-    clearInterval(timer);
-    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-  }
+});
+holeSuit1.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeRank2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeSuit2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
 });
 
 function renderHistory(){
@@ -292,11 +288,11 @@ function renderHistory(){
 }
 
 function drawOnce(){
-  if(drawCount >= 1000){
-    stopInterval();
+  if(counter >= 1000){
+    stopBtn.click();
+    alert('Ziel von 1000 Durchläufen erreicht. Bitte Neustart klicken.');
     return;
   }
-
   flopArea.innerHTML = '';
 
   const hole1 = {r:parseInt(holeRank1.value), s: holeSuit1.value};
@@ -320,52 +316,46 @@ function drawOnce(){
     history.shift();
   }
 
-  // Drillinge zählen
   if(res.toLowerCase().includes('drilling')){
     drillingCount++;
-    drillingCounter.textContent = `Drilling: ${drillingCount}`;
+    drillingCounter.textContent = 'Drilling: ' + drillingCount;
   }
 
-  drawCount++;
+  counter++;
 
   renderHistory();
   renderHoleCards(); // Hole Cards aktuell halten
 }
 
-function startInterval(){
-  if(timer) clearInterval(timer);
+startBtn.onclick = () => {
+  checkHoleCards();
+  drawOnce();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  restartBtn.disabled = false;
   timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-}
+};
 
-function stopInterval(){
+stopBtn.onclick = () => {
   if(timer) clearInterval(timer);
   timer = null;
   startBtn.disabled = false;
   stopBtn.disabled = true;
-}
-
-// Button Funktionen
-startBtn.onclick = () => {
-  preventDuplicateHoleCards();
-  drawOnce();
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
-  startInterval();
-};
-
-stopBtn.onclick = () => {
-  stopInterval();
 };
 
 restartBtn.onclick = () => {
-  stopInterval();
+  if(timer) {
+    clearInterval(timer);
+    timer = null;
+  }
   history = [];
   drillingCount = 0;
-  drawCount = 0;
-  drillingCounter.textContent = `Drilling: 0`;
+  counter = 0;
+  drillingCounter.textContent = 'Drilling: 0';
   resultList.innerHTML = '';
-  setupSelectors();
-  preventDuplicateHoleCards();
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  restartBtn.disabled = false;
   renderHoleCards();
 };
 
