@@ -17,7 +17,7 @@
   .heart, .diamond { color: red; }
   .club, .spade { color: black; }
   #resultList {
-    margin: 15px auto 10px;
+    margin: 15px auto 25px;
     width: 340px;
     max-height: 260px;
     overflow-y: auto;
@@ -37,12 +37,6 @@
     color: #0b1e2d;
     font-weight: bold;
   }
-  #drillingCounter {
-    margin: 10px auto 25px;
-    font-size: 20px;
-    font-weight: bold;
-    color: #1fa2ff;
-  }
   .controls { margin: 20px 0; font-size: 20px; }
   select { font-size: 18px; margin: 0 6px; }
   input[type=range] { width: 230px; vertical-align: middle; }
@@ -53,8 +47,17 @@
   }
   .start { background: #1fa2ff; color: #fff; }
   .stop { background: #555; color: #fff; }
-  .restart { background: #28a745; color: #fff; }
   #holeArea { margin: 20px 0; }
+  #counterArea {
+    margin: 10px auto 40px;
+    width: 340px;
+    text-align: left;
+    font-size: 18px;
+    color: #f0f4f8;
+  }
+  #counterArea div {
+    margin: 4px 0;
+  }
 </style>
 </head>
 <body>
@@ -76,9 +79,10 @@
   <br><br>
   <button id="startBtn" class="start">Start</button>
   <button id="stopBtn" class="stop" disabled>Stop</button>
-  <button id="restartBtn" class="restart" disabled>Neustart</button>
+  <button id="restartBtn" class="start">Neustart</button>
 </div>
 
+<!-- Hole Cards mittig über dem Flop -->
 <div id="holeArea" class="cards"></div>
 
 <div>
@@ -87,7 +91,15 @@
 </div>
 
 <div id="resultList"></div>
-<div id="drillingCounter">Drilling: 0</div>
+
+<div id="counterArea">
+  <div id="pairCount">Paar-Zähler: 0</div>
+  <div id="twoPairCount">Zwei Paare-Zähler: 0</div>
+  <div id="drillingCount">Drilling-Zähler: 0</div>
+  <div id="straightCount">Straßen-Zähler: 0</div>
+  <div id="flushCount">Flush-Zähler: 0</div>
+  <div id="fullHouseCount">Full House-Zähler: 0</div>
+</div>
 
 <script>
 const RANKS = [2,3,4,5,6,7,8,9,10,11,12,13,14];
@@ -179,17 +191,28 @@ const holeSuit2 = document.getElementById('holeSuit2');
 const holeArea = document.getElementById('holeArea');
 const flopArea = document.getElementById('flopArea');
 const resultList = document.getElementById('resultList');
-const drillingCounterEl = document.getElementById('drillingCounter');
 const intervalEl = document.getElementById('interval');
 const intervalVal = document.getElementById('intervalValue');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const restartBtn = document.getElementById('restartBtn');
 
+const pairCountEl = document.getElementById('pairCount');
+const twoPairCountEl = document.getElementById('twoPairCount');
+const drillingCountEl = document.getElementById('drillingCount');
+const straightCountEl = document.getElementById('straightCount');
+const flushCountEl = document.getElementById('flushCount');
+const fullHouseCountEl = document.getElementById('fullHouseCount');
+
 let timer = null;
 let history = [];
-let totalCount = 0;
 let drillingCount = 0;
+let pairCount = 0;
+let twoPairCount = 0;
+let straightCount = 0;
+let flushCount = 0;
+let fullHouseCount = 0;
+let count = 0;
 
 function createOption(value, text) {
   const opt = document.createElement('option');
@@ -215,11 +238,25 @@ function setupSelectors(){
 }
 setupSelectors();
 
+intervalEl.addEventListener('input', () => {
+  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
+  if(timer){
+    clearInterval(timer);
+    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
+  }
+});
+
+// Verhindert doppelte Hole Cards:
 function checkHoleCards() {
-  if(holeRank1.value === holeRank2.value && holeSuit1.value === holeSuit2.value){
+  const h1r = holeRank1.value;
+  const h1s = holeSuit1.value;
+  const h2r = holeRank2.value;
+  const h2s = holeSuit2.value;
+
+  if(h1r === h2r && h1s === h2s){
     outer: for(let r of RANKS){
       for(let s of SUITS){
-        if(r != holeRank1.value || s != holeSuit1.value){
+        if(r != h1r || s != h1s){
           holeRank2.value = r;
           holeSuit2.value = s;
           break outer;
@@ -229,6 +266,7 @@ function checkHoleCards() {
   }
 }
 
+// Hole Cards sofort anzeigen
 function renderHoleCards(){
   holeArea.innerHTML = '';
   const h1 = {r: parseInt(holeRank1.value), s: holeSuit1.value};
@@ -237,97 +275,159 @@ function renderHoleCards(){
   holeArea.appendChild(cardEl(h2));
 }
 
-holeRank1.addEventListener('change', ()=>{checkHoleCards();renderHoleCards();});
-holeSuit1.addEventListener('change', ()=>{checkHoleCards();renderHoleCards();});
-holeRank2.addEventListener('change', ()=>{checkHoleCards();renderHoleCards();});
-holeSuit2.addEventListener('change', ()=>{checkHoleCards();renderHoleCards();});
+holeRank1.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeSuit1.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeRank2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
+holeSuit2.addEventListener('change', () => {
+  checkHoleCards();
+  renderHoleCards();
+});
 
 function renderHistory(){
   resultList.innerHTML = '';
-  const startIndex = history.length > 1000 ? history.length - 1000 : 0;
-  for(let i=startIndex; i<history.length; i++){
+  const maxEntries = 1000;
+  const recent = history.slice(-maxEntries);
+  for(const h of recent){
     const div = document.createElement('div');
-    const num = i - startIndex + 1;
-    div.textContent = `${num}. ${history[i]}`;
-    if(history[i].toLowerCase().includes('drilling')) {
+    div.textContent = `${h.count}. ${h.classification}`;
+    if(h.classification.toLowerCase().includes('drilling')){
       div.classList.add('drilling');
     }
     resultList.appendChild(div);
   }
+  // Automatisches Scrollen ans Ende:
   resultList.scrollTop = resultList.scrollHeight;
-  drillingCounterEl.textContent = `Drilling: ${drillingCount}`;
+}
+
+function resetCounts(){
+  drillingCount = 0;
+  pairCount = 0;
+  twoPairCount = 0;
+  straightCount = 0;
+  flushCount = 0;
+  fullHouseCount = 0;
+  count = 0;
+  history = [];
+  updateCounters();
+  renderHistory();
+}
+
+function updateCounters(){
+  pairCountEl.textContent = `Paar-Zähler: ${pairCount}`;
+  twoPairCountEl.textContent = `Zwei Paare-Zähler: ${twoPairCount}`;
+  drillingCountEl.textContent = `Drilling-Zähler: ${drillingCount}`;
+  straightCountEl.textContent = `Straßen-Zähler: ${straightCount}`;
+  flushCountEl.textContent = `Flush-Zähler: ${flushCount}`;
+  fullHouseCountEl.textContent = `Full House-Zähler: ${fullHouseCount}`;
 }
 
 function drawOnce(){
-  flopArea.innerHTML = '';
+  count++;
+  const hole1 = {r: parseInt(holeRank1.value), s: holeSuit1.value};
+  const hole2 = {r: parseInt(holeRank2.value), s: holeSuit2.value};
 
-  const hole1 = {r:parseInt(holeRank1.value), s: holeSuit1.value};
-  const hole2 = {r:parseInt(holeRank2.value), s: holeSuit2.value};
+  // Bau Deck ohne Hole Cards
+  let deck = buildDeck().filter(c=>{
+    return !( (c.r===hole1.r && c.s===hole1.s) || (c.r===hole2.r && c.s===hole2.s));
+  });
 
-  let deck = buildDeck();
-  deck = deck.filter(c => !(c.r === hole1.r && c.s === hole1.s) && !(c.r === hole2.r && c.s === hole2.s));
   shuffle(deck);
+  // Ziehe Flop (3 Karten)
+  const flop = deck.slice(0,3);
 
-  const flop = deck.splice(0,3);
-  flop.forEach(c => flopArea.appendChild(cardEl(c)));
+  const allCards = [hole1,hole2,...flop];
+  const classification = classify(allCards);
 
-  const allCards = [hole1, hole2, ...flop];
-  const res = classify(allCards);
-  history.push(res);
+  // Update Flop-Anzeige
+  flopArea.innerHTML = '';
+  flop.forEach(c=>flopArea.appendChild(cardEl(c)));
 
-  totalCount++;
-  if(res.toLowerCase().includes('drilling')) drillingCount++;
-
-  if(totalCount >= 1000){
-    stopBtn.click();
+  // Update History
+  history.push({count, classification});
+  if(history.length > 1000){
+    history.shift();
   }
-
   renderHistory();
-  renderHoleCards();
+
+  // Update Zähler je Klassifikation
+  if(classification.toLowerCase().includes('paar') && !classification.toLowerCase().includes('zwei paare')){
+    pairCount++;
+  } else if(classification.toLowerCase().includes('zwei paare')){
+    twoPairCount++;
+  } else if(classification.toLowerCase().includes('drilling')){
+    drillingCount++;
+  } else if(classification.toLowerCase().includes('straight')){
+    straightCount++;
+  } else if(classification.toLowerCase().includes('flush')){
+    flushCount++;
+  } else if(classification.toLowerCase().includes('full house')){
+    fullHouseCount++;
+  }
+  updateCounters();
+
+  if(count >= 1000){
+    stop();
+  }
 }
 
-startBtn.onclick = () => {
+function start(){
   checkHoleCards();
-  drawOnce(); // Flop sofort anzeigen
+  renderHoleCards();
+  resetCounts();
+  drawOnce();
+  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
   startBtn.disabled = true;
   stopBtn.disabled = false;
-  restartBtn.disabled = false;
-  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-};
+}
 
-stopBtn.onclick = () => {
-  if(timer) clearInterval(timer);
+function stop(){
+  clearInterval(timer);
   timer = null;
   startBtn.disabled = false;
   stopBtn.disabled = true;
-};
+}
 
-restartBtn.onclick = () => {
-  if(timer) clearInterval(timer);
-  timer = null;
-  history = [];
-  totalCount = 0;
-  drillingCount = 0;
-  resultList.innerHTML = '';
-  drillingCounterEl.textContent = 'Drilling: 0';
-  flopArea.innerHTML = '';
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-  restartBtn.disabled = false;
+function restart(){
+  stop();
+  resetCounts();
   renderHoleCards();
-};
+  flopArea.innerHTML = '';
+  resultList.innerHTML = '';
+}
 
-intervalEl.addEventListener('input', () => {
-  intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
-  if(timer){
-    clearInterval(timer);
-    timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-  }
+startBtn.addEventListener('click', start);
+stopBtn.addEventListener('click', stop);
+restartBtn.addEventListener('click', () => {
+  restart();
+  start();
 });
 
+// Initial Setup
 checkHoleCards();
 renderHoleCards();
-intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
+
+// Flop direkt anzeigen beim Start (neu gemischt mit holecards ausgeschlossen)
+function initialFlop(){
+  const hole1 = {r: parseInt(holeRank1.value), s: holeSuit1.value};
+  const hole2 = {r: parseInt(holeRank2.value), s: holeSuit2.value};
+  let deck = buildDeck().filter(c=>{
+    return !( (c.r===hole1.r && c.s===hole1.s) || (c.r===hole2.r && c.s===hole2.s));
+  });
+  shuffle(deck);
+  const flop = deck.slice(0,3);
+  flopArea.innerHTML = '';
+  flop.forEach(c=>flopArea.appendChild(cardEl(c)));
+}
+initialFlop();
 </script>
 
 </body>
