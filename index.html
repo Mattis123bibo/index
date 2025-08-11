@@ -70,7 +70,7 @@
   <br><br>
   <button id="startBtn" class="start">Start</button>
   <button id="stopBtn" class="stop" disabled>Stop</button>
-  <button id="restartBtn" class="restart" title="Neustart">Neustart</button>
+  <button id="restartBtn" class="restart">Neustart</button>
 </div>
 
 <!-- Hole Cards jetzt mittig über dem Flop -->
@@ -182,7 +182,6 @@ const restartBtn = document.getElementById('restartBtn');
 let timer = null;
 let history = [];
 let count = 0;
-const maxCount = 1000;
 
 function createOption(value, text) {
   const opt = document.createElement('option');
@@ -264,11 +263,10 @@ holeSuit2.addEventListener('change', () => {
 
 function renderHistory(){
   resultList.innerHTML = '';
-  const maxEntries = 150;
-  const startIndex = history.length > maxEntries ? history.length - maxEntries : 0;
-  for(let i=startIndex; i<history.length; i++){
+  // Alle Einträge anzeigen, bis maximal 1000
+  for(let i=0; i<history.length; i++){
     const div = document.createElement('div');
-    const num = i - startIndex + 1;
+    const num = i + 1;
     div.textContent = `${num}. ${history[i]}`;
     if(history[i].toLowerCase().includes('drilling')) {
       div.classList.add('drilling');
@@ -279,8 +277,12 @@ function renderHistory(){
 }
 
 function drawOnce(){
-  if(count >= maxCount){
-    stopProcess();
+  // Stoppen, wenn 1000 erreicht
+  if(count >= 1000){
+    clearInterval(timer);
+    timer = null;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
     return;
   }
 
@@ -303,54 +305,49 @@ function drawOnce(){
   const res = classify(allCards);
   history.push(res);
 
-  if(history.length > 150){
+  if(history.length > 1000){
     history.shift();
   }
 
-  count++;
   renderHistory();
   renderHoleCards();
+
+  count++;
 }
 
-function startProcess(){
+startBtn.onclick = () => {
   checkHoleCards();
-  if(count >= maxCount) {
-    // falls am Ende nochmal starten, reset machen
-    resetProcess();
-  }
+  if(timer) clearInterval(timer);
+  count = 0;
   drawOnce();
   startBtn.disabled = true;
   stopBtn.disabled = false;
-  restartBtn.disabled = false;
   timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-}
+};
 
-function stopProcess(){
+stopBtn.onclick = () => {
   if(timer) clearInterval(timer);
   timer = null;
   startBtn.disabled = false;
   stopBtn.disabled = true;
-}
+};
 
-function resetProcess(){
-  stopProcess();
+restartBtn.onclick = () => {
+  if(timer) clearInterval(timer);
+  timer = null;
   count = 0;
   history = [];
-  renderHistory();
-  renderHoleCards();
-}
-
-startBtn.onclick = () => startProcess();
-stopBtn.onclick = () => stopProcess();
-restartBtn.onclick = () => {
-  resetProcess();
-  startProcess();
+  resultList.innerHTML = '';
+  checkHoleCards();
+  drawOnce();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+  timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
 };
 
 // Initial anzeigen:
 renderHoleCards();
 drawOnce();
-
 </script>
 
 </body>
