@@ -52,7 +52,7 @@
   #drillingCounter {
     font-size: 20px;
     color: #f0f4f8;
-    margin-bottom: 20px;
+    margin-top: 15px;
   }
 </style>
 </head>
@@ -78,16 +78,19 @@
   <button id="restartBtn" class="restart">Neustart</button>
 </div>
 
-<!-- Hole Cards jetzt mittig über dem Flop -->
+<!-- Hole Cards -->
 <div id="holeArea" class="cards"></div>
 
-<div id="drillingCounter">Drilling: 0</div>
-
+<!-- Flop -->
 <div>
   <div style="font-size:18px;color:#ccc;margin-top:14px;">Flop</div>
   <div class="cards" id="flopArea"></div>
 </div>
 
+<!-- Drilling Counter jetzt ganz unten unter dem Flop -->
+<div id="drillingCounter">Drilling: 0</div>
+
+<!-- Ergebnisliste -->
 <div id="resultList"></div>
 
 <script>
@@ -209,10 +212,9 @@ function setupSelectors(){
     holeSuit1.appendChild(createOption(s,s));
     holeSuit2.appendChild(createOption(s,s));
   });
-  // Neue Startwerte:
   holeRank1.value = 10;
   holeSuit1.value = '♥';
-  holeRank2.value = 11;  // J = 11
+  holeRank2.value = 11;
   holeSuit2.value = '♠';
 }
 setupSelectors();
@@ -225,15 +227,12 @@ intervalEl.addEventListener('input', () => {
   }
 });
 
-// Verhindert doppelte Hole Cards und korrigiert automatisch
 function checkHoleCards() {
   const h1r = holeRank1.value;
   const h1s = holeSuit1.value;
   let h2r = holeRank2.value;
   let h2s = holeSuit2.value;
-
   if(h1r === h2r && h1s === h2s){
-    // Suche eine andere Karte für Hole 2
     outer: for(let r of RANKS){
       for(let s of SUITS){
         if(r != h1r || s != h1s){
@@ -248,7 +247,6 @@ function checkHoleCards() {
   }
 }
 
-// Hole Cards sofort anzeigen
 function renderHoleCards(){
   holeArea.innerHTML = '';
   const h1 = {r: parseInt(holeRank1.value), s: holeSuit1.value};
@@ -257,22 +255,10 @@ function renderHoleCards(){
   holeArea.appendChild(cardEl(h2));
 }
 
-holeRank1.addEventListener('change', () => {
-  checkHoleCards();
-  renderHoleCards();
-});
-holeSuit1.addEventListener('change', () => {
-  checkHoleCards();
-  renderHoleCards();
-});
-holeRank2.addEventListener('change', () => {
-  checkHoleCards();
-  renderHoleCards();
-});
-holeSuit2.addEventListener('change', () => {
-  checkHoleCards();
-  renderHoleCards();
-});
+holeRank1.addEventListener('change', () => { checkHoleCards(); renderHoleCards(); });
+holeSuit1.addEventListener('change', () => { checkHoleCards(); renderHoleCards(); });
+holeRank2.addEventListener('change', () => { checkHoleCards(); renderHoleCards(); });
+holeSuit2.addEventListener('change', () => { checkHoleCards(); renderHoleCards(); });
 
 function renderHistory(){
   resultList.innerHTML = '';
@@ -282,9 +268,7 @@ function renderHistory(){
     const div = document.createElement('div');
     const num = i - startIndex + 1;
     div.textContent = `${num}. ${history[i]}`;
-    if(history[i].toLowerCase().includes('drilling')) {
-      div.classList.add('drilling');
-    }
+    if(history[i].toLowerCase().includes('drilling')) div.classList.add('drilling');
     resultList.appendChild(div);
   }
   resultList.scrollTop = resultList.scrollHeight;
@@ -297,44 +281,32 @@ function drawOnce(){
     return;
   }
   flopArea.innerHTML = '';
-
-  checkHoleCards();  // Immer doppelte Karten verhindern vor draw
+  checkHoleCards();
 
   const hole1 = {r:parseInt(holeRank1.value), s: holeSuit1.value};
   const hole2 = {r:parseInt(holeRank2.value), s: holeSuit2.value};
-
-  let deck = buildDeck();
-
-  deck = deck.filter(c => !(c.r === hole1.r && c.s === hole1.s) && !(c.r === hole2.r && c.s === hole2.s));
-
+  let deck = buildDeck().filter(c => !(c.r === hole1.r && c.s === hole1.s) && !(c.r === hole2.r && c.s === hole2.s));
   shuffle(deck);
-
   const flop = deck.splice(0,3);
-
   flop.forEach(c => flopArea.appendChild(cardEl(c)));
 
   const allCards = [hole1, hole2, ...flop];
   const res = classify(allCards);
   history.push(res);
-
-  if(history.length > 1000){
-    history.shift();
-  }
+  if(history.length > 1000) history.shift();
 
   if(res.toLowerCase().includes('drilling')){
     drillingCount++;
     drillingCounter.textContent = 'Drilling: ' + drillingCount;
   }
-
   counter++;
-
   renderHistory();
-  renderHoleCards(); // Hole Cards aktuell halten
+  renderHoleCards();
 }
 
 startBtn.onclick = () => {
   checkHoleCards();
-  drawOnce();
+  drawOnce(); // Sofort Flop beim Start
   startBtn.disabled = true;
   stopBtn.disabled = false;
   restartBtn.disabled = false;
@@ -361,15 +333,12 @@ restartBtn.onclick = () => {
   flopArea.innerHTML = '';
   startBtn.disabled = false;
   stopBtn.disabled = true;
-  restartBtn.disabled = false;
   renderHoleCards();
 };
 
-// Initial
 checkHoleCards();
 renderHoleCards();
 intervalVal.textContent = parseFloat(intervalEl.value).toFixed(1) + 's';
-
 </script>
 
 </body>
