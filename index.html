@@ -47,6 +47,7 @@
   }
   .start { background: #1fa2ff; color: #fff; }
   .stop { background: #555; color: #fff; }
+  .restart { background: #28a745; color: #fff; }
   #holeArea { margin: 20px 0; }
 </style>
 </head>
@@ -69,6 +70,7 @@
   <br><br>
   <button id="startBtn" class="start">Start</button>
   <button id="stopBtn" class="stop" disabled>Stop</button>
+  <button id="restartBtn" class="restart" title="Neustart">Neustart</button>
 </div>
 
 <!-- Hole Cards jetzt mittig über dem Flop -->
@@ -175,9 +177,12 @@ const intervalEl = document.getElementById('interval');
 const intervalVal = document.getElementById('intervalValue');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
+const restartBtn = document.getElementById('restartBtn');
 
 let timer = null;
 let history = [];
+let count = 0;
+const maxCount = 1000;
 
 function createOption(value, text) {
   const opt = document.createElement('option');
@@ -274,6 +279,11 @@ function renderHistory(){
 }
 
 function drawOnce(){
+  if(count >= maxCount){
+    stopProcess();
+    return;
+  }
+
   flopArea.innerHTML = '';
 
   const hole1 = {r:parseInt(holeRank1.value), s: holeSuit1.value};
@@ -297,23 +307,44 @@ function drawOnce(){
     history.shift();
   }
 
+  count++;
   renderHistory();
-  renderHoleCards(); // Hole Cards aktuell halten
+  renderHoleCards();
 }
 
-startBtn.onclick = () => {
+function startProcess(){
   checkHoleCards();
+  if(count >= maxCount) {
+    // falls am Ende nochmal starten, reset machen
+    resetProcess();
+  }
   drawOnce();
   startBtn.disabled = true;
   stopBtn.disabled = false;
+  restartBtn.disabled = false;
   timer = setInterval(drawOnce, parseFloat(intervalEl.value)*1000);
-};
+}
 
-stopBtn.onclick = () => {
+function stopProcess(){
   if(timer) clearInterval(timer);
   timer = null;
   startBtn.disabled = false;
   stopBtn.disabled = true;
+}
+
+function resetProcess(){
+  stopProcess();
+  count = 0;
+  history = [];
+  renderHistory();
+  renderHoleCards();
+}
+
+startBtn.onclick = () => startProcess();
+stopBtn.onclick = () => stopProcess();
+restartBtn.onclick = () => {
+  resetProcess();
+  startProcess();
 };
 
 // Initial anzeigen:
